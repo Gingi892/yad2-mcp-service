@@ -48,7 +48,8 @@ def load_config():
                 }
             ],
             "data_dir": "data",
-            "check_interval_minutes": 15
+            "check_interval_minutes": 15,
+            "auto_scan": True  # הוספת הגדרה לסריקה אוטומטית
         }
         
         os.makedirs('data', exist_ok=True)
@@ -263,8 +264,8 @@ def format_items_for_response(new_items, topic):
 
 def scrape_project(project, config):
     """סריקת פרויקט יחיד"""
-    topic = project.get('topic')
-    url = project.get('url')
+    topic = project.get('topic', '').strip()
+    url = project.get('url', '').strip()
     
     if not topic or not url:
         return "חסרים פרטי נושא או URL. מדלג."
@@ -306,7 +307,7 @@ def add_project(topic, url, config_path="config.json"):
         
         # בדיקה אם הפרויקט כבר קיים
         for project in config.get('projects', []):
-            if project.get('topic') == topic:
+            if project.get('topic', '').strip() == topic.strip():
                 project['url'] = url
                 project['disabled'] = False
                 break
@@ -327,6 +328,19 @@ def add_project(topic, url, config_path="config.json"):
     except Exception as e:
         return f"שגיאה בהוספת הפרויקט: {str(e)}"
 
+def run_all_scans(config):
+    """הרצת כל הסריקות המוגדרות"""
+    results = []
+    
+    for project in config.get('projects', []):
+        if not project.get('disabled', False):
+            results.append(scrape_project(project, config))
+    
+    if not results:
+        return "אין פרויקטים זמינים לסריקה. הוספת פרויקט חדש באמצעות פקודת 'add'."
+    
+    return "\n" + "="*50 + "\n".join(results)
+
 def run_mcp_command(command, args=None):
     """הרצת פקודה עבור MCP"""
     config = load_config()
@@ -338,34 +352,42 @@ def run_mcp_command(command, args=None):
 2. add - הוספת פרויקט חדש
    דוגמה: add [שם נושא] [URL]
 3. list - הצגת רשימת הפרויקטים
-4. help - הצגת עזרה זו
+4. auto - הפעלת סריקה אוטומטית של כל הפרויקטים
+5. help - הצגת עזרה זו
 """
     
     elif command == "scan":
         if args and len(args) > 0:
             # סריקת נושא ספציפי
-            topic = args[0]
+            topic = args[0].strip()
             for project in config.get('projects', []):
-                if project.get('topic') == topic and not project.get('disabled', False):
+                if project.get('topic', '').strip() == topic and not project.get('disabled', False):
                     return scrape_project(project, config)
+            
+            # אם לא נמצא, בדוק אם זה URL ונסה להוסיף אוטומטית
+            if topic.startswith("http"):
+                new_topic = f"חיפוש אוטומטי {datetime.now().strftime('%Y-%m-%d')}"
+                add_project(new_topic, topic)
+                return f"נוסף נושא חדש '{new_topic}' עם URL:\n{topic}\n\nתוצאות סריקה ראשונית:\n" + \
+                       scrape_project({"topic": new_topic, "url": topic}, config)
+            
             return f"לא נמצא פרויקט בשם '{topic}' או שהוא מושבת."
         else:
             # סריקת כל הנושאים
-            results = []
-            for project in config.get('projects', []):
-                if not project.get('disabled', False):
-                    results.append(scrape_project(project, config))
-            
-            if not results:
-                return "אין פרויקטים זמינים לסריקה. הוספת פרויקט חדש באמצעות פקודת 'add'."
-            
-            return "\n" + "="*50 + "\n".join(results)
+            return run_all_scans(config)
     
     elif command == "add":
         if args and len(args) >= 2:
-            topic = args[0]
-            url = args[1]
-            return add_project(topic, url)
+            topic = args[0].strip()
+            url = args[1].strip()
+            result = add_project(topic, url)
+            
+            # אם הוספת הפרויקט הצליחה, בצע סריקה ראשונית
+            if "נוסף בהצלחה" in result:
+                scan_result = scrape_project({"topic": topic, "url": url}, config)
+                return f"{result}\n\n{scan_result}"
+            
+            return result
         else:
             return "שימוש שגוי בפקודת add. הפורמט הנכון: add [שם נושא] [URL]"
     
@@ -377,10 +399,13 @@ def run_mcp_command(command, args=None):
         result = "רשימת הפרויקטים:\n"
         for i, project in enumerate(projects, 1):
             status = "פעיל" if not project.get('disabled', False) else "מושבת"
-            result += f"{i}. {project.get('topic')} [{status}]\n"
-            result += f"   URL: {project.get('url')}\n"
+            result += f"{i}. {project.get('topic', '')} [{status}]\n"
+            result += f"   URL: {project.get('url', '')}\n"
         
         return result
+    
+    elif command == "auto":
+        return run_all_scans(config)
     
     else:
         return f"פקודה לא מוכרת: '{command}'. הקלד 'help' לקבלת רשימת הפקודות."
@@ -388,12 +413,20 @@ def run_mcp_command(command, args=None):
 def main():
     """נקודת הכניסה הראשית"""
     parser = argparse.ArgumentParser(description='שירות MCP לסריקת מודעות חדשות ביד2')
-    parser.add_argument('command', nargs='?', default='help', help='הפקודה להרצה (scan, add, list, help)')
+    parser.add_argument('command', nargs='?', default='help', help='הפקודה להרצה (scan, add, list, auto, help)')
     parser.add_argument('args', nargs='*', help='פרמטרים נוספים לפקודה')
     
     args = parser.parse_args()
-    result = run_mcp_command(args.command, args.args)
+    config = load_config()
+    
+    # בדיקה אם הפעלת מצב אוטומטי
+    if args.command == 'auto' or (len(sys.argv) == 1 and config.get('auto_scan', False)):
+        result = run_all_scans(config)
+    else:
+        result = run_mcp_command(args.command, args.args)
+    
     print(result)
 
 if __name__ == "__main__":
+    import sys
     main()
