@@ -1,0 +1,29 @@
+{
+  "email": {
+    "enabled": false,
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587,
+    "sender_email": "your-email@gmail.com",
+    "sender_password": "your-app-password",
+    "recipient_email": "your-email@gmail.com"
+  },
+  "projects": [
+    {
+      "topic": "דירות למכירה בתל אביב",
+      "url": "https://www.yad2.co.il/realestate/forsale?city=5000",
+      "disabled": false
+    },
+    {
+      "topic": "דירות להשכרה בתל אביב",
+      "url": "https://www.yad2.co.il/realestate/rent?city=5000",
+      "disabled": false
+    },
+    {
+      "topic": "דירות למכירה בירושלים",
+      "url": "https://www.yad2.co.il/realestate/forsale?city=3000",
+      "disabled": true
+    }
+  ],
+  "data_dir": "data",
+  "check_interval_minutes": 15
+}
