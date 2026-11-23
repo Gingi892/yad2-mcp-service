@@ -14,6 +14,9 @@ import time
 import subprocess
 from datetime import datetime
 
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
+
 def ensure_path():
     """וידוא שהסקריפט רץ מתוך תיקיית הפרויקט"""
     # מציאת הנתיב של הסקריפט הנוכחי
